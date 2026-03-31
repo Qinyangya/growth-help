@@ -1,0 +1,967 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>我的成长日记</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    :root { --bg:#fff8f0; --panel:#fff; --text:#333; --accent:#ff7f50; --muted:#777; --border:#f0c6a1; }
+    *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+    body{margin:0;font-family:PingFang SC,Helvetica,Arial,sans-serif;background:var(--bg);color:var(--text);}
+    .container{max-width:1080px;margin:0 auto;padding:12px 16px 40px;}
+    .header{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;padding:12px 0;}
+    .title{font-size:1.5rem;font-weight:700;color:#d15d30;}.stats{font-size:.95rem;color:#7a3b24;}
+    .tabs{display:flex;flex-wrap:wrap;margin:8px 0;gap:6px;}
+    .tab{border:1px solid var(--border);background:var(--panel);color:var(--accent);padding:7px 10px;border-radius:999px;cursor:pointer;user-select:none;}.tab.active{background:var(--accent);color:#fff;}
+    section{display:none;margin-top:12px;}.active-section{display:block;}
+    .card{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:10px;margin-bottom:10px;}
+    .flex{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+    .button{background:var(--accent);color:#fff;padding:7px 11px;border:none;border-radius:8px;cursor:pointer;transition:all .2s;}.button:hover{opacity:.9;}
+    .small-btn{padding:4px 8px;font-size:.82rem;}.danger{background:#ff8f7a;}
+    input,textarea,select{border:1px solid #e5b38e;border-radius:8px;padding:7px;font-size:.95rem;outline:none;width:100%;background:#fff;}
+    .row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+    .module{border:1px solid #f2cbb2;border-radius:10px;margin-bottom:10px;}
+    .module-title{padding:10px;display:flex;justify-content:space-between;cursor:pointer;}.module-title h3{margin:0;font-size:1rem;}.collapse-indicator{font-size:.9rem;color:#b36b4a;}
+    .task-list{padding:0 10px 10px;}
+    .task-item{display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #f3dfcd;}
+    .task-item:last-child{border-bottom:none;}
+    .task-label{flex:1;display:flex;align-items:center;gap:8px;word-break:break-word;}
+    .task-label input[type=checkbox]{width:16px;height:16px;}
+    .task-done{text-decoration:line-through;color:#a78b71;}
+    .tiny{font-size:.8rem;color:var(--muted);}
+    .today-item{display:grid;grid-template-columns:1fr auto auto;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #f6dfcf;}
+    .today-item:last-child{border-bottom:none;}
+    .toast{position:fixed;left:50%;top:20px;transform:translateX(-50%);padding:10px 14px;background:rgba(255,127,80,.95);color:#fff;border-radius:999px;z-index:20;opacity:0;pointer-events:none;transition:opacity .4s;}
+    .toast.show{opacity:1;}
+    .calendar{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;}
+    .calendar .day{padding:8px;min-height:56px;border:1px solid #f1d5b5;border-radius:8px;text-align:right;position:relative;background:#fff;}
+    .calendar .day.inked{background:#e3f6e9;border-color:#a9ddab;}
+    .calendar .day .label{position:absolute;left:6px;top:6px;font-size:.68rem;color:#a17862;}
+    .calendar-label{display:grid;grid-template-columns:repeat(7,1fr);text-align:center;margin-bottom:4px;font-size:.82rem;color:#9d7149;}
+    .report-panel{margin-top:8px;}
+    @keyframes bounceDone{0%{transform:scale(1);}50%{transform:scale(1.1);}100%{transform:scale(1);}}
+    .done-anim{animation:bounceDone .3s ease;}
+    @media (max-width:720px){.header{flex-direction:column;align-items:flex-start;}.stats{margin-top:8px;}.today-item{grid-template-columns:1fr auto;}.today-item .controls{display:flex;gap:6px;}}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <div><div class="title">我的成长日记</div><div class="stats" id="topStatus"></div></div>
+      <div id="streakInfo" class="stats"></div>
+    </div>
+    <div class="tabs" id="tabs"></div>
+    <section id="todaySection" class="active-section"></section>
+    <section id="modulesSection"></section>
+    <section id="calendarSection"></section>
+    <section id="reportSection"></section>
+    <section id="diarySection"></section>
+    <div id="toast" class="toast"></div>
+  </div>
+  <script>
+    const SUPABASE_URL = 'https://shsbrfcietqxlapswkvc.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNoc2JyZmNpZXRxeGxhcHN3a3ZjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ4NDc1NTcsImV4cCI6MjA5MDQyMzU1N30.pJqLJpLpSPMOHZrsP8rCk_mOtMXSb2FAo_Uu72M0mLk';
+    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    const DEFAULT_MODULES = [
+      { id: 'module_kaogong', name: '考公考编', tasks: [
+        { id: 'kaogong_t1', text: '打开粉笔APP，看1节行测网课', done: false },
+        { id: 'kaogong_t2', text: '打开粉笔APP，做30道行测题', done: false },
+        { id: 'kaogong_t3', text: '打开人民日报公众号，读2篇文章', done: false },
+        { id: 'kaogong_t4', text: '看学习强国20分钟', done: false },
+        { id: 'kaogong_t5', text: '做1篇申论素材积累', done: false }
+      ]},
+      { id: 'module_jishu', name: '技术成长', tasks: [
+        { id: 'jishu_t1', text: '跟着教程练3个Linux命令', done: false },
+        { id: 'jishu_t2', text: '把今天工作的Kotlin代码再看一遍', done: false },
+        { id: 'jishu_t3', text: '学一个Git操作并试一遍', done: false },
+        { id: 'jishu_t4', text: '跟着教程做一个HTML/CSS小页面', done: false },
+        { id: 'jishu_t5', text: '打开微信开发者工具，跟着教程做一个小页面', done: false }
+      ]},
+      { id: 'module_shizhan', name: '实战项目', tasks: [
+        { id: 'shizhan_t1', text: '写代码做自律工具功能', done: false },
+        { id: 'shizhan_t2', text: '拍菜品照片', done: false },
+        { id: 'shizhan_t3', text: '录教学视频给爸妈', done: false },
+        { id: 'shizhan_t4', text: '帮父母注册抖音/美团账号', done: false },
+        { id: 'shizhan_t5', text: '做操作指南文档', done: false }
+      ]},
+      { id: 'module_shenghuo', name: '生活与健康', tasks: [
+        { id: 'shenghuo_t1', text: '做一顿让自己满意的饭', done: false },
+        { id: 'shenghuo_t2', text: '出门散步或运动', done: false },
+        { id: 'shenghuo_t3', text: '收拾房间', done: false },
+        { id: 'shenghuo_t4', text: '给爸妈打个电话', done: false },
+        { id: 'shenghuo_t5', text: '关注今日新闻', done: false }
+      ]}
+    ];
+
+    let modules = [];
+    let todayPool = [];
+    let doneRecords = [];
+    let diaryRecords = {};
+    let selfChecks = {};
+
+    const today = () => new Date().toISOString().slice(0, 10);
+    const parseDate = s => new Date(s);
+
+    function showToast(message) {
+      const toast = document.getElementById('toast');
+      toast.textContent = message;
+      toast.classList.add('show');
+      setTimeout(() => toast.classList.remove('show'), 1300);
+    }
+
+    async function initSupabase() {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) {
+          showToast('正在连接 Supabase...');
+        }
+
+        await checkAndInitData();
+        await loadAllData();
+        return true;
+      } catch (error) {
+        console.error('Supabase initialization failed:', error);
+        showToast('连接失败，请检查网络');
+        return false;
+      }
+    }
+
+    async function checkAndInitData() {
+      try {
+        const { count: modulesCount } = await supabase.from('modules').select('*', { count: 'exact', head: true });
+        if (modulesCount === 0) {
+          showToast('首次使用，正在初始化数据...');
+          await initDefaultData();
+        }
+      } catch (error) {
+        console.error('Failed to check/init data:', error);
+      }
+    }
+
+    async function initDefaultData() {
+      const now = new Date().toISOString();
+      for (const module of DEFAULT_MODULES) {
+        await supabase.from('modules').insert({
+          id: module.id,
+          name: module.name,
+          collapsed: false,
+          sort_order: DEFAULT_MODULES.indexOf(module),
+          created_at: now
+        });
+        for (const task of module.tasks) {
+          await supabase.from('tasks').insert({
+            id: task.id,
+            module_id: module.id,
+            text: task.text,
+            done: false,
+            sort_order: module.tasks.indexOf(task),
+            created_at: now
+          });
+        }
+      }
+    }
+
+    async function loadAllData() {
+      try {
+        const [modRes, todayRes, doneRes, diaryRes, checkRes] = await Promise.all([
+          supabase.from('modules').select('*').order('sort_order'),
+          supabase.from('today_pool').select('*'),
+          supabase.from('done_records').select('*').order('created_at', { ascending: false }),
+          supabase.from('diary').select('*'),
+          supabase.from('self_checks').select('*')
+        ]);
+
+        if (modRes.error || todayRes.error || doneRes.error || diaryRes.error || checkRes.error) {
+          throw new Error('Failed to load data');
+        }
+
+        modules = modRes.data.map(mod => ({
+          ...mod,
+          tasks: []
+        }));
+
+        const taskRes = await supabase.from('tasks').select('*').order('sort_order');
+        if (!taskRes.error) {
+          for (const task of taskRes.data) {
+            const mod = modules.find(m => m.id === task.module_id);
+            if (mod) {
+              mod.tasks.push({
+                ...task,
+                done: task.done || false
+              });
+            }
+          }
+        }
+
+        todayPool = todayRes.data.map(item => ({
+          id: item.id,
+          text: item.text,
+          moduleId: item.module_id,
+          moduleName: item.module_name,
+          isTemp: item.is_temp || false,
+          done: item.done || false
+        }));
+
+        doneRecords = doneRes.data.map(rec => ({
+          id: rec.id,
+          date: rec.task_date,
+          taskId: rec.record_id,
+          text: rec.text,
+          moduleId: rec.module_id,
+          moduleName: rec.module_name,
+          isTemp: rec.is_temp || false
+        }));
+
+        diaryRecords = diaryRes.data.reduce((acc, entry) => {
+          acc[entry.entry_date] = entry.content;
+          return acc;
+        }, {});
+
+        selfChecks = checkRes.data.reduce((acc, item) => {
+          acc[item.check_date] = {
+            study: item.study || false,
+            life: item.life || false,
+            tomorrow: item.tomorrow || ''
+          };
+          return acc;
+        }, {});
+
+        await clearOldDayIfNeeded();
+        renderAll();
+      } catch (error) {
+        console.error('Load all data failed:', error);
+        showToast('数据加载失败，请刷新重试');
+      }
+    }
+
+    async function clearOldDayIfNeeded() {
+      const currentDate = today();
+      try {
+        const { data: oldEntries } = await supabase
+          .from('today_pool')
+          .select('*')
+          .neq('task_date', currentDate);
+
+        if (oldEntries && oldEntries.length > 0) {
+          for (const entry of oldEntries) {
+            await supabase.from('today_pool').delete().eq('id', entry.id);
+          }
+          todayPool = [];
+        }
+
+        try {
+          await supabase.from('today_pool').delete().lt('created_at', currentDate);
+        } catch (e) {}
+
+        await syncTodayPoolDate();
+      } catch (error) {
+        console.error('Clear old day failed:', error);
+      }
+    }
+
+    async function syncTodayPoolDate() {
+      const currentDate = today();
+      try {
+        const { error } = await supabase
+          .from('today_pool')
+          .update({ task_date: currentDate })
+          .is('task_date', null);
+      } catch (e) {}
+    }
+
+    async function saveModules() {
+      try {
+        for (const mod of modules) {
+          await supabase.from('modules').upsert({
+            id: mod.id,
+            name: mod.name,
+            collapsed: mod.collapsed || false,
+            sort_order: mod.sort_order || 0,
+            updated_at: new Date().toISOString()
+          });
+        }
+      } catch (error) {
+        console.error('Save modules failed:', error);
+        showToast('保存模块失败');
+      }
+    }
+
+    async function saveTasks() {
+      try {
+        for (const mod of modules) {
+          for (const task of mod.tasks) {
+            await supabase.from('tasks').upsert({
+              id: task.id,
+              module_id: mod.id,
+              text: task.text,
+              done: task.done || false,
+              sort_order: task.sort_order || 0,
+              updated_at: new Date().toISOString()
+            });
+          }
+        }
+      } catch (error) {
+        console.error('Save tasks failed:', error);
+        showToast('保存任务失败');
+      }
+    }
+
+    async function saveTodayPool() {
+      try {
+        for (const item of todayPool) {
+          await supabase.from('today_pool').upsert({
+            id: item.id,
+            text: item.text,
+            module_id: item.moduleId || null,
+            module_name: item.moduleName || '临时任务',
+            is_temp: item.isTemp || false,
+            done: item.done || false,
+            task_date: today()
+          });
+        }
+
+        const existingIds = todayPool.map(t => t.id);
+        const { data: allItems } = await supabase.from('today_pool').select('id');
+        if (allItems) {
+          for (const item of allItems) {
+            if (!existingIds.includes(item.id)) {
+              await supabase.from('today_pool').delete().eq('id', item.id);
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Save today pool failed:', error);
+        showToast('保存今日任务失败');
+      }
+    }
+
+    async function markDoneRecord(task) {
+      try {
+        const date = today();
+        if (task.done) {
+          const { data: { user } } = await supabase.auth.getUser();
+          await supabase.from('done_records').insert({
+            record_id: task.id,
+            task_date: date,
+            text: task.text,
+            module_id: task.moduleId || null,
+            module_name: task.moduleName || '临时任务',
+            is_temp: task.isTemp || false,
+            created_at: new Date().toISOString()
+          });
+        } else {
+          await supabase.from('done_records')
+            .delete()
+            .eq('record_id', task.id)
+            .eq('task_date', date);
+        }
+      } catch (error) {
+        console.error('Mark done record failed:', error);
+        showToast('记录完成状态失败');
+      }
+    }
+
+    async function saveDiaryRecords() {
+      try {
+        const currentDate = today();
+        const content = diaryRecords[currentDate] || '';
+        await supabase.from('diary').upsert({
+          id: currentDate,
+          entry_date: currentDate,
+          content: content.trim(),
+          updated_at: new Date().toISOString()
+        });
+      } catch (error) {
+        console.error('Save diary failed:', error);
+        showToast('保存日记失败');
+      }
+    }
+
+    async function saveSelfChecks() {
+      try {
+        const currentDate = today();
+        const check = selfChecks[currentDate] || { study: false, life: false, tomorrow: '' };
+        await supabase.from('self_checks').upsert({
+          id: currentDate,
+          check_date: currentDate,
+          study: check.study || false,
+          life: check.life || false,
+          tomorrow: check.tomorrow || '',
+          updated_at: new Date().toISOString()
+        });
+      } catch (error) {
+        console.error('Save self check failed:', error);
+        showToast('保存自检失败');
+      }
+    }
+
+    async function exportData() {
+      try {
+        const exportData = {
+          modules,
+          todayPool,
+          doneRecords,
+          diaryRecords,
+          selfChecks,
+          exportedAt: new Date().toISOString()
+        };
+        const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `growth_tool_backup_${today()}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+        showToast('数据导出成功');
+      } catch (error) {
+        console.error('Export failed:', error);
+        showToast('导出失败');
+      }
+    }
+
+    async function importData(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      try {
+        const text = await file.text();
+        const data = JSON.parse(text);
+        if (!data.modules || !Array.isArray(data.modules)) {
+          showToast('无效的备份文件');
+          return;
+        }
+        if (!confirm('导入将覆盖当前数据，确认继续？')) return;
+
+        modules = data.modules;
+        todayPool = data.todayPool || [];
+        doneRecords = data.doneRecords || [];
+        diaryRecords = data.diaryRecords || {};
+        selfChecks = data.selfChecks || {};
+
+        await Promise.all([
+          saveModules(),
+          saveTasks(),
+          saveTodayPool(),
+          syncTodayPoolDate()
+        ]);
+
+        showToast('数据导入成功');
+        renderAll();
+      } catch (error) {
+        console.error('Import failed:', error);
+        showToast('导入失败：文件格式错误');
+      }
+    }
+
+    async function deleteModule(moduleId) {
+      try {
+        await supabase.from('modules').delete().eq('id', moduleId);
+        await supabase.from('tasks').delete().eq('module_id', moduleId);
+        modules = modules.filter(m => m.id !== moduleId);
+        todayPool = todayPool.filter(t => t.moduleId !== moduleId);
+        await saveTodayPool();
+        showToast('模块已删除');
+        renderModules();
+      } catch (error) {
+        console.error('Delete module failed:', error);
+        showToast('删除模块失败');
+      }
+    }
+
+    async function deleteTask(moduleId, taskId) {
+      try {
+        await supabase.from('tasks').delete().eq('id', taskId);
+        const mod = modules.find(m => m.id === moduleId);
+        if (mod) {
+          mod.tasks = mod.tasks.filter(t => t.id !== taskId);
+        }
+        todayPool = todayPool.filter(t => t.id !== taskId);
+        await saveTodayPool();
+        showToast('任务已删除');
+        renderModules();
+        renderTodaySection();
+      } catch (error) {
+        console.error('Delete task failed:', error);
+        showToast('删除任务失败');
+      }
+    }
+
+    function getStreak() {
+      const dates = Array.from(new Set(doneRecords.map(r => r.date))).sort();
+      if (!dates.length) return { current: 0, longest: 0 };
+      const todayStr = today();
+      const hasToday = dates.includes(todayStr);
+      let current = 0;
+      let day = new Date(today());
+      if (hasToday) {
+        current = 1;
+        day.setDate(day.getDate() - 1);
+      } else {
+        day = new Date(today());
+        day.setDate(day.getDate() - 1);
+      }
+      while (true) {
+        const key = day.toISOString().slice(0, 10);
+        if (dates.includes(key)) {
+          current++;
+          day.setDate(day.getDate() - 1);
+        } else break;
+      }
+      let longest = 0, run = 0, prev = null;
+      dates.forEach(d => {
+        const date = new Date(d);
+        if (prev && ((date - prev) / (1000 * 60 * 60 * 24) === 1)) {
+          run++;
+        } else {
+          run = 1;
+        }
+        prev = date;
+        longest = Math.max(longest, run);
+      });
+      return { current, longest };
+    }
+
+    function getTodayProgress() {
+      const total = todayPool.length;
+      const done = todayPool.filter(t => t.done).length;
+      return { done, total };
+    }
+
+    function isTaskSelected(taskId) {
+      return todayPool.some(t => t.id === taskId);
+    }
+
+    async function toggleTodayTaskDone(taskId, newState) {
+      const task = todayPool.find(t => t.id === taskId);
+      if (!task) return;
+      task.done = newState;
+      await saveTodayPool();
+      await markDoneRecord(task);
+      renderTopStatus();
+      renderTodaySection();
+    }
+
+    function renderTopStatus() {
+      const p = getTodayProgress();
+      const streak = getStreak();
+      document.getElementById('topStatus').textContent = `今日完成 ${p.done}/${p.total}`;
+      document.getElementById('streakInfo').textContent = `连续打卡 ${streak.current} 天，历史最长 ${streak.longest} 天`;
+    }
+
+    function renderTabs() {
+      const tabs = [
+        { id: 'todaySection', label: '今日任务' },
+        { id: 'modulesSection', label: '模块管理' },
+        { id: 'calendarSection', label: '打卡日历' },
+        { id: 'reportSection', label: '周报/月报' },
+        { id: 'diarySection', label: '日记' }
+      ];
+      const container = document.getElementById('tabs');
+      container.innerHTML = tabs.map(tab =>
+        `<div class="tab${tab.id === 'todaySection' ? ' active' : ''}" data-target="${tab.id}">${tab.label}</div>`
+      ).join('');
+      container.addEventListener('click', e => {
+        const target = e.target.closest('.tab');
+        if (!target) return;
+        document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t === target));
+        document.querySelectorAll('section').forEach(s => s.classList.toggle('active-section', s.id === target.dataset.target));
+        if (target.dataset.target === 'reportSection') {
+          renderReport();
+        }
+        if (target.dataset.target === 'calendarSection') {
+          renderCalendar();
+        }
+      });
+    }
+
+    function renderModules() {
+      const node = document.getElementById('modulesSection');
+      node.innerHTML = '';
+      const addModuleEl = document.createElement('div');
+      addModuleEl.className = 'card';
+      addModuleEl.innerHTML = `<div class="row"><input type="text" id="newModuleName" placeholder="新增模块名称" style="flex:1"><button class="button" id="addModuleBtn">添加模块</button></div>`;
+      node.appendChild(addModuleEl);
+
+      modules.forEach(mod => {
+        const modEl = document.createElement('div');
+        modEl.className = 'module';
+        const collapsed = mod.collapsed ? '▲' : '▼';
+        modEl.innerHTML = `
+          <div class="module-title" data-module="${mod.id}"><h3>${mod.name}</h3><span class="collapse-indicator">${collapsed}</span></div>
+          <div class="task-list" data-module-list="${mod.id}" style="display:${mod.collapsed ? 'none' : 'block'}">
+            ${mod.tasks.map(task => `
+              <div class="task-item" data-task="${task.id}" data-module="${mod.id}">
+                <label class="task-label">
+                  <input type="checkbox" ${task.done ? 'checked' : ''} class="module-task-done" data-module="${mod.id}" data-task="${task.id}">
+                  <span class="${task.done ? 'task-done' : ''}">${task.text}</span>
+                </label>
+                <div>
+                  <button class="button small-btn" data-action="select-today" data-module="${mod.id}" data-task="${task.id}">${isTaskSelected(task.id) ? '已在今日' : '加入今日'}</button>
+                  <button class="button small-btn" data-action="edit-task" data-module="${mod.id}" data-task="${task.id}">编辑</button>
+                  <button class="button small-btn danger" data-action="delete-task" data-module="${mod.id}" data-task="${task.id}">删除</button>
+                </div>
+              </div>
+            `).join('')}
+            <div class="row" style="margin-top:8px">
+              <input placeholder="添加任务" data-module-input="${mod.id}">
+              <button class="button small-btn" data-action="add-task" data-module="${mod.id}">添加</button>
+            </div>
+          </div>`;
+        node.appendChild(modEl);
+      });
+    }
+
+    function renderTodaySection() {
+      const node = document.getElementById('todaySection');
+      node.innerHTML = '';
+      const card = document.createElement('div');
+      card.className = 'card';
+      card.innerHTML = `
+        <h3>今日任务池</h3>
+        <div class="row" style="margin:10px 0">
+          <input id="tempTaskInput" placeholder="临时今日任务" style="flex:1">
+          <button class="button" id="addTempTaskBtn">添加</button>
+          <button class="button" id="exportBtn" style="margin-left:8px">导出数据</button>
+          <label class="button" style="margin-left:8px;display:inline-block;position:relative">
+            导入数据
+            <input type="file" accept=".json" id="importInput" style="position:absolute;left:0;top:0;opacity:0;width:100%;height:100%;cursor:pointer">
+          </label>
+        </div>
+        <div id="todayList"></div>
+      `;
+      node.appendChild(card);
+
+      const list = document.getElementById('todayList');
+      if (!todayPool.length) {
+        list.innerHTML = '<div class="tiny">还没有任务，去模块中添加或选择任务吧</div>';
+      } else {
+        list.innerHTML = todayPool.map(task => `
+          <div class="today-item" data-task="${task.id}">
+            <label style="display:flex;align-items:center;gap:8px;">
+              <input type="checkbox" ${task.done ? 'checked' : ''} class="today-done" data-task="${task.id}">
+              <span class="${task.done ? 'task-done' : ''}">${task.text}</span>
+            </label>
+            <div class="controls">
+              <button class="button small-btn danger" data-action="remove-today" data-task="${task.id}">移除</button>
+            </div>
+          </div>
+        `).join('');
+      }
+
+      document.getElementById('exportBtn').addEventListener('click', exportData);
+      document.getElementById('importInput').addEventListener('change', importData);
+    }
+
+    function renderCalendar() {
+      const node = document.getElementById('calendarSection');
+      node.innerHTML = '';
+      const now = new Date();
+      const year = now.getFullYear();
+      const month = now.getMonth();
+      const firstDay = new Date(year, month, 1);
+      const daysInMonth = new Date(year, month + 1, 0).getDate();
+      const firstWeekday = (firstDay.getDay() + 6) % 7;
+      const cal = document.createElement('div');
+      cal.innerHTML = `<h3>${year}年${month + 1}月打卡日历</h3><div class="calendar-label"><div>周一</div><div>周二</div><div>周三</div><div>周四</div><div>周五</div><div>周六</div><div>周日</div></div><div class="calendar" id="calendarGrid"></div>`;
+      node.appendChild(cal);
+      const grid = document.getElementById('calendarGrid');
+      const activeDays = new Set(doneRecords.filter(r => r.date.startsWith(`${year}-${String(month + 1).padStart(2, '0')}-`)).map(r => r.date));
+      const days = [];
+      for (let i = 0; i < firstWeekday; i++) days.push('');
+      for (let d = 1; d <= daysInMonth; d++) days.push(d);
+      days.forEach(val => {
+        const day = document.createElement('div');
+        day.className = 'day';
+        if (!val) {
+          day.style.background = 'transparent';
+          day.style.border = 'none';
+          day.innerHTML = '';
+        } else {
+          const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(val).padStart(2, '0')}`;
+          const checked = activeDays.has(dateStr);
+          day.innerHTML = `<div class="label">${val}</div>`;
+          if (checked) {
+            day.classList.add('inked');
+            day.innerHTML += '<div style="position:absolute;bottom:5px;left:5px;font-size:.72rem;color:#2b8a4f;">✔</div>';
+          }
+        }
+        grid.appendChild(day);
+      });
+      const monthCount = Array.from(new Set(doneRecords.map(r => r.date))).filter(d => d.startsWith(`${year}-${String(month + 1).padStart(2, '0')}-`)).length;
+      const streak = getStreak();
+      const summary = document.createElement('div');
+      summary.className = 'report-panel';
+      summary.innerHTML = `<p>本月完成打卡天数 ${monthCount} 天；当前连续打卡 ${streak.current} 天；历史最长 ${streak.longest} 天</p>`;
+      node.appendChild(summary);
+    }
+
+    function weekRange() {
+      const now = new Date();
+      const day = (now.getDay() + 6) % 7;
+      const start = new Date(now);
+      start.setDate(now.getDate() - day);
+      const end = new Date(start);
+      end.setDate(start.getDate() + 6);
+      return [start.toISOString().slice(0, 10), end.toISOString().slice(0, 10)];
+    }
+
+    function monthRange() {
+      const now = new Date();
+      const start = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+      const end = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()).padStart(2, '0')}`;
+      return [start, end];
+    }
+
+    function renderReport() {
+      const node = document.getElementById('reportSection');
+      node.innerHTML = '';
+      const [ws, we] = weekRange();
+      const [ms, me] = monthRange();
+      const weekDone = doneRecords.filter(r => r.date >= ws && r.date <= we);
+      const monthDone = doneRecords.filter(r => r.date >= ms && r.date <= me);
+      const group = items => items.reduce((acc, r) => {
+        const key = r.moduleName || r.moduleId || '其他';
+        acc[key] = acc[key] || [];
+        acc[key].push(r);
+        return acc;
+      }, {});
+      const weekGroup = group(weekDone);
+      const monthGroup = group(monthDone);
+      const weekCard = document.createElement('div');
+      weekCard.className = 'card';
+      weekCard.innerHTML = `<h3>本周报告 (${ws} ～ ${we})</h3><p>完成任务 ${weekDone.length} 个，打卡天数 ${new Set(weekDone.map(r => r.date)).size} 天</p>${Object.entries(weekGroup).map(([mod, items]) => `<div><strong>${mod}</strong> (${items.length})<ul>${items.map(i => `<li>${i.date}: ${i.text}</li>`).join('')}</ul></div>`).join('')}<button class="button" id="showWeekBtn">查看本周报告</button>`;
+      const monthCard = document.createElement('div');
+      monthCard.className = 'card';
+      monthCard.innerHTML = `<h3>本月报告 (${ms} ～ ${me})</h3><p>完成任务 ${monthDone.length} 个，打卡天数 ${new Set(monthDone.map(r => r.date)).size} 天</p>${Object.entries(monthGroup).map(([mod, items]) => `<div><strong>${mod}</strong> (${items.length})<ul>${items.map(i => `<li>${i.date}: ${i.text}</li>`).join('')}</ul></div>`).join('')}<button class="button" id="showMonthBtn">查看本月报告</button>`;
+      node.appendChild(weekCard);
+      node.appendChild(monthCard);
+      document.getElementById('showWeekBtn').addEventListener('click', () => showToast('本周报告已更新，可上方查看'));
+      document.getElementById('showMonthBtn').addEventListener('click', () => showToast('本月报告已更新，可上方查看'));
+    }
+
+    function renderDiary() {
+      const node = document.getElementById('diarySection');
+      const current = today();
+      const value = diaryRecords[current] || '';
+      const self = selfChecks[current] || { study: false, life: false, tomorrow: '' };
+      node.innerHTML = `<div class="card"><h3>每日一句话日记 (${current})</h3><textarea id="diaryInput" rows="3" placeholder="写一天心情或做了什么">${value}</textarea><div class="row" style="margin-top:8px"><button class="button" id="saveDiaryBtn">保存日记</button></div></div><div class="card"><h3>每日自检（睡前1分钟）</h3><label><input type="checkbox" id="checkStudy" ${self.study ? 'checked' : ''}>今天做了一件学习上的事吗？</label><label style="margin-left:10px"><input type="checkbox" id="checkLife" ${self.life ? 'checked' : ''}>今天做了生活上的事吗？</label><div style="margin-top:6px"><input id="tomorrowInput" placeholder="明天最想做的一件事是什么？" value="${self.tomorrow || ''}"></div><div class="row" style="margin-top:8px"><button class="button" id="saveCheckBtn">保存自检</button></div><div id="checkResult" class="tiny"></div></div>`;
+      const updateCheckResult = () => {
+        const c = (document.getElementById('checkStudy').checked ? 1 : 0) + (document.getElementById('checkLife').checked ? 1 : 0);
+        const result = document.getElementById('checkResult');
+        if (c >= 2) {
+          result.textContent = '好日子！继续保持，明天也加油~';
+          result.style.color = '#2f8d45';
+        } else {
+          result.textContent = '稳住，明天继续努力。';
+          result.style.color = '#b86d48';
+        }
+      };
+      updateCheckResult();
+      document.getElementById('saveDiaryBtn').addEventListener('click', async () => {
+        diaryRecords[current] = document.getElementById('diaryInput').value.trim();
+        await saveDiaryRecords();
+        showToast('日记保存成功');
+      });
+      document.getElementById('checkStudy').addEventListener('change', updateCheckResult);
+      document.getElementById('checkLife').addEventListener('change', updateCheckResult);
+      document.getElementById('saveCheckBtn').addEventListener('click', async () => {
+        selfChecks[current] = {
+          study: document.getElementById('checkStudy').checked,
+          life: document.getElementById('checkLife').checked,
+          tomorrow: document.getElementById('tomorrowInput').value.trim()
+        };
+        await saveSelfChecks();
+        updateCheckResult();
+        showToast('自检保存成功');
+      });
+    }
+
+    function renderAll() {
+      renderTopStatus();
+      renderTabs();
+      renderModules();
+      renderTodaySection();
+      renderCalendar();
+      renderReport();
+      renderDiary();
+    }
+
+    function setupEvents() {
+      document.getElementById('modulesSection').addEventListener('click', async e => {
+        const btn = e.target.closest('button');
+        if (!btn) return;
+        const action = btn.dataset.action;
+        const moduleId = btn.dataset.module;
+        const taskId = btn.dataset.task;
+
+        if (action === 'add-task') {
+          const input = document.querySelector(`[data-module-input="${moduleId}"]`);
+          const text = input.value.trim();
+          if (!text) { showToast('任务不能为空'); return; }
+          const mod = modules.find(m => m.id === moduleId);
+          const id = `${moduleId}_custom_${Date.now()}`;
+          mod.tasks.push({ id, text, done: false, sort_order: mod.tasks.length });
+          await saveTasks();
+          input.value = '';
+          renderModules();
+          showToast('任务已添加');
+        }
+
+        if (action === 'select-today') {
+          const mod = modules.find(m => m.id === moduleId);
+          const task = mod.tasks.find(t => t.id === taskId);
+          if (!task) return;
+          if (isTaskSelected(task.id)) {
+            todayPool = todayPool.filter(t => t.id !== task.id);
+            showToast('已从今日移除');
+          } else {
+            todayPool.push({
+              id: task.id,
+              text: task.text,
+              moduleId: moduleId,
+              moduleName: mod.name,
+              isTemp: false,
+              done: false
+            });
+            showToast('已加入今日任务池');
+          }
+          await saveTodayPool();
+          renderModules();
+          renderTodaySection();
+          renderTopStatus();
+        }
+
+        if (action === 'edit-task') {
+          const mod = modules.find(m => m.id === moduleId);
+          const task = mod.tasks.find(t => t.id === taskId);
+          const text = prompt('编辑任务', task.text);
+          if (text !== null) {
+            task.text = text.trim();
+            await saveTasks();
+            renderModules();
+            showToast('任务已更新');
+          }
+        }
+
+        if (action === 'delete-task') {
+          if (!confirm('确认删除该任务？')) return;
+          await deleteTask(moduleId, taskId);
+        }
+      });
+
+      document.getElementById('modulesSection').addEventListener('click', e => {
+        const modTitle = e.target.closest('.module-title');
+        if (!modTitle) return;
+        const moduleId = modTitle.dataset.module;
+        const module = modules.find(m => m.id === moduleId);
+        if (!module) return;
+        module.collapsed = !module.collapsed;
+        saveModules().then(() => renderModules());
+      });
+
+      document.getElementById('modulesSection').addEventListener('change', e => {
+        if (!e.target.matches('.module-task-done')) return;
+        const moduleId = e.target.dataset.module;
+        const taskId = e.target.dataset.task;
+        const mod = modules.find(m => m.id === moduleId);
+        const task = mod.tasks.find(t => t.id === taskId);
+        task.done = e.target.checked;
+        saveTasks().then(() => renderModules());
+      });
+
+      document.getElementById('modulesSection').addEventListener('click', e => {
+        const btn = e.target.closest('#addModuleBtn');
+        if (!btn) return;
+        const name = document.getElementById('newModuleName').value.trim();
+        if (!name) { showToast('模块名称不能为空'); return; }
+        const id = `module_${Date.now()}`;
+        modules.push({
+          id,
+          name,
+          collapsed: false,
+          sort_order: modules.length,
+          tasks: []
+        });
+        supabase.from('modules').insert({
+          id,
+          name,
+          collapsed: false,
+          sort_order: modules.length,
+          created_at: new Date().toISOString()
+        }).then(() => {
+          document.getElementById('newModuleName').value = '';
+          renderModules();
+          showToast('模块已添加');
+        }).catch(err => {
+          console.error('Add module failed:', err);
+          showToast('添加模块失败');
+        });
+      });
+
+      document.getElementById('todaySection').addEventListener('click', async e => {
+        const btn = e.target.closest('button');
+        if (!btn) return;
+        if (btn.id === 'addTempTaskBtn') {
+          const input = document.getElementById('tempTaskInput');
+          const text = input.value.trim();
+          if (!text) { showToast('请输入临时任务'); return; }
+          const id = `temp_${Date.now()}`;
+          todayPool.push({
+            id,
+            text,
+            moduleId: '',
+            moduleName: '临时任务',
+            isTemp: true,
+            done: false
+          });
+          await saveTodayPool();
+          input.value = '';
+          renderTodaySection();
+          renderTopStatus();
+          showToast('临时任务已添加');
+          return;
+        }
+        const action = btn.dataset.action;
+        const taskId = btn.dataset.task;
+        if (action === 'remove-today') {
+          todayPool = todayPool.filter(t => t.id !== taskId);
+          await saveTodayPool();
+          const task = todayPool.find(t => t.id === taskId);
+          if (task && task.done) {
+            await supabase.from('done_records').delete().eq('record_id', taskId).eq('task_date', today());
+          }
+          renderTodaySection();
+          renderModules();
+          renderTopStatus();
+          showToast('已移除今日任务');
+        }
+      });
+
+      document.getElementById('todaySection').addEventListener('change', async e => {
+        if (!e.target.matches('.today-done')) return;
+        const taskId = e.target.dataset.task;
+        const checked = e.target.checked;
+        const row = e.target.closest('.today-item');
+        if (row) {
+          row.classList.add('done-anim');
+          setTimeout(() => row.classList.remove('done-anim'), 280);
+        }
+        await toggleTodayTaskDone(taskId, checked);
+        renderTodaySection();
+      });
+    }
+
+    async function init() {
+      showToast('正在连接服务器...');
+      const success = await initSupabase();
+      if (success) {
+        showToast('数据加载完成');
+      }
+      setupEvents();
+    }
+
+    init();
+  </script>
+</body>
+</html>
