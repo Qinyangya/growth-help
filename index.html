@@ -119,13 +119,10 @@
 
     async function initSupabase() {
       try {
-        const { data: { session } } = await supabaseClient.auth.getSession();
-        if (!session) {
-          showToast('正在连接 Supabase...');
-        }
-
+        showToast('正在连接 Supabase...');
         await checkAndInitData();
         await loadAllData();
+        showToast('连接成功');
         return true;
       } catch (error) {
         console.error('Supabase initialization failed:', error);
