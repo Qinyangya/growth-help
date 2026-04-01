@@ -62,7 +62,7 @@
   <script>
     const SUPABASE_URL = 'https://shsbrfcietqxlapswkvc.supabase.co';
     const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNoc2JyZmNpZXRxeGxhcHN3a3ZjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ4NDc1NTcsImV4cCI6MjA5MDQyMzU1N30.pJqLJpLpSPMOHZrsP8rCk_mOtMXSb2FAo_Uu72M0mLk';
-    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
     const DEFAULT_MODULES = [
       { id: 'module_kaogong', name: '考公考编', tasks: [
@@ -113,7 +113,7 @@
 
     async function initSupabase() {
       try {
-        const { data: { session } } = await supabase.auth.getSession();
+        const { data: { session } } = await supabaseClient.auth.getSession();
         if (!session) {
           showToast('正在连接 Supabase...');
         }
@@ -130,7 +130,7 @@
 
     async function checkAndInitData() {
       try {
-        const { count: modulesCount } = await supabase.from('modules').select('*', { count: 'exact', head: true });
+        const { count: modulesCount } = await supabaseClient.from('modules').select('*', { count: 'exact', head: true });
         if (modulesCount === 0) {
           showToast('首次使用，正在初始化数据...');
           await initDefaultData();
@@ -143,7 +143,7 @@
     async function initDefaultData() {
       const now = new Date().toISOString();
       for (const module of DEFAULT_MODULES) {
-        await supabase.from('modules').insert({
+        await supabaseClient.from('modules').insert({
           id: module.id,
           name: module.name,
           collapsed: false,
@@ -151,7 +151,7 @@
           created_at: now
         });
         for (const task of module.tasks) {
-          await supabase.from('tasks').insert({
+          await supabaseClient.from('tasks').insert({
             id: task.id,
             module_id: module.id,
             text: task.text,
@@ -166,11 +166,11 @@
     async function loadAllData() {
       try {
         const [modRes, todayRes, doneRes, diaryRes, checkRes] = await Promise.all([
-          supabase.from('modules').select('*').order('sort_order'),
-          supabase.from('today_pool').select('*'),
-          supabase.from('done_records').select('*').order('created_at', { ascending: false }),
-          supabase.from('diary').select('*'),
-          supabase.from('self_checks').select('*')
+          supabaseClient.from('modules').select('*').order('sort_order'),
+          supabaseClient.from('today_pool').select('*'),
+          supabaseClient.from('done_records').select('*').order('created_at', { ascending: false }),
+          supabaseClient.from('diary').select('*'),
+          supabaseClient.from('self_checks').select('*')
         ]);
 
         if (modRes.error || todayRes.error || doneRes.error || diaryRes.error || checkRes.error) {
@@ -182,7 +182,7 @@
           tasks: []
         }));
 
-        const taskRes = await supabase.from('tasks').select('*').order('sort_order');
+        const taskRes = await supabaseClient.from('tasks').select('*').order('sort_order');
         if (!taskRes.error) {
           for (const task of taskRes.data) {
             const mod = modules.find(m => m.id === task.module_id);
@@ -246,13 +246,13 @@
 
         if (oldEntries && oldEntries.length > 0) {
           for (const entry of oldEntries) {
-            await supabase.from('today_pool').delete().eq('id', entry.id);
+            await supabaseClient.from('today_pool').delete().eq('id', entry.id);
           }
           todayPool = [];
         }
 
         try {
-          await supabase.from('today_pool').delete().lt('created_at', currentDate);
+          await supabaseClient.from('today_pool').delete().lt('created_at', currentDate);
         } catch (e) {}
 
         await syncTodayPoolDate();
@@ -274,7 +274,7 @@
     async function saveModules() {
       try {
         for (const mod of modules) {
-          await supabase.from('modules').upsert({
+          await supabaseClient.from('modules').upsert({
             id: mod.id,
             name: mod.name,
             collapsed: mod.collapsed || false,
@@ -292,7 +292,7 @@
       try {
         for (const mod of modules) {
           for (const task of mod.tasks) {
-            await supabase.from('tasks').upsert({
+            await supabaseClient.from('tasks').upsert({
               id: task.id,
               module_id: mod.id,
               text: task.text,
@@ -311,7 +311,7 @@
     async function saveTodayPool() {
       try {
         for (const item of todayPool) {
-          await supabase.from('today_pool').upsert({
+          await supabaseClient.from('today_pool').upsert({
             id: item.id,
             text: item.text,
             module_id: item.moduleId || null,
@@ -323,11 +323,11 @@
         }
 
         const existingIds = todayPool.map(t => t.id);
-        const { data: allItems } = await supabase.from('today_pool').select('id');
+        const { data: allItems } = await supabaseClient.from('today_pool').select('id');
         if (allItems) {
           for (const item of allItems) {
             if (!existingIds.includes(item.id)) {
-              await supabase.from('today_pool').delete().eq('id', item.id);
+              await supabaseClient.from('today_pool').delete().eq('id', item.id);
             }
           }
         }
@@ -341,8 +341,8 @@
       try {
         const date = today();
         if (task.done) {
-          const { data: { user } } = await supabase.auth.getUser();
-          await supabase.from('done_records').insert({
+          const { data: { user } } = await supabaseClient.auth.getUser();
+          await supabaseClient.from('done_records').insert({
             record_id: task.id,
             task_date: date,
             text: task.text,
@@ -352,7 +352,7 @@
             created_at: new Date().toISOString()
           });
         } else {
-          await supabase.from('done_records')
+          await supabaseClient.from('done_records')
             .delete()
             .eq('record_id', task.id)
             .eq('task_date', date);
@@ -367,7 +367,7 @@
       try {
         const currentDate = today();
         const content = diaryRecords[currentDate] || '';
-        await supabase.from('diary').upsert({
+        await supabaseClient.from('diary').upsert({
           id: currentDate,
           entry_date: currentDate,
           content: content.trim(),
@@ -383,7 +383,7 @@
       try {
         const currentDate = today();
         const check = selfChecks[currentDate] || { study: false, life: false, tomorrow: '' };
-        await supabase.from('self_checks').upsert({
+        await supabaseClient.from('self_checks').upsert({
           id: currentDate,
           check_date: currentDate,
           study: check.study || false,
@@ -456,8 +456,8 @@
 
     async function deleteModule(moduleId) {
       try {
-        await supabase.from('modules').delete().eq('id', moduleId);
-        await supabase.from('tasks').delete().eq('module_id', moduleId);
+        await supabaseClient.from('modules').delete().eq('id', moduleId);
+        await supabaseClient.from('tasks').delete().eq('module_id', moduleId);
         modules = modules.filter(m => m.id !== moduleId);
         todayPool = todayPool.filter(t => t.moduleId !== moduleId);
         await saveTodayPool();
@@ -471,7 +471,7 @@
 
     async function deleteTask(moduleId, taskId) {
       try {
-        await supabase.from('tasks').delete().eq('id', taskId);
+        await supabaseClient.from('tasks').delete().eq('id', taskId);
         const mod = modules.find(m => m.id === moduleId);
         if (mod) {
           mod.tasks = mod.tasks.filter(t => t.id !== taskId);
@@ -883,7 +883,7 @@
           sort_order: modules.length,
           tasks: []
         });
-        supabase.from('modules').insert({
+        supabaseClient.from('modules').insert({
           id,
           name,
           collapsed: false,
@@ -929,7 +929,7 @@
           await saveTodayPool();
           const task = todayPool.find(t => t.id === taskId);
           if (task && task.done) {
-            await supabase.from('done_records').delete().eq('record_id', taskId).eq('task_date', today());
+            await supabaseClient.from('done_records').delete().eq('record_id', taskId).eq('task_date', today());
           }
           renderTodaySection();
           renderModules();
