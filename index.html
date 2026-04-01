@@ -63,7 +63,12 @@
     const SUPABASE_URL = 'https://shsbrfcietqxlapswkvc.supabase.co';
     const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNoc2JyZmNpZXRxeGxhcHN3a3ZjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ4NDc1NTcsImV4cCI6MjA5MDQyMzU1N30.pJqLJpLpSPMOHZrsP8rCk_mOtMXSb2FAo_Uu72M0mLk';
     const { createClient } = supabase;
-    const supabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    const supabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      headers: {
+        'apikey': SUPABASE_ANON_KEY,
+        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
+      }
+    });
 
     const DEFAULT_MODULES = [
       { id: 'module_kaogong', name: '考公考编', tasks: [
